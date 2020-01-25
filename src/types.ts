@@ -19,3 +19,15 @@ export interface EnhancedConsulNode extends ConsulNode {
     type: ConsulNodeType
     apiAddress: string 
 }
+
+export interface AgentPolicyResponse {
+    ID : string
+    Name : string
+    Description : string,
+}
+
+export interface AgentTokenResponse {
+    AccessorID : string
+    SecretID : string
+    Description : string
+}

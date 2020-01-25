@@ -1,5 +1,12 @@
 import fetch from 'node-fetch'
-import { ConsulConsensusResult, ConsulNode, EnhancedConsulNode, ConsulNodeType } from './types'
+import {
+    ConsulConsensusResult,
+    ConsulNode,
+    EnhancedConsulNode,
+    ConsulNodeType,
+    AgentPolicyResponse,
+    AgentTokenResponse
+} from './types'
 
 export function createConsulApiAddress(
     consulScheme : string,
@@ -10,15 +17,12 @@ export function createConsulApiAddress(
 }
 
 export async function getClusterConsensus(
-    consulScheme : string,
-    consulHost : string,
-    consulPort : string,
-    consulDatacenter : string
+    consulApi : string,
+    consulDatacenter : string,
+    consulAclToken : string
 ) : Promise<ConsulConsensusResult> {
-    const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
-
     const apiReachError = 'Can\'t reach Consul API'
-    await fetch(`${consulApi}`)
+    await fetch(`${consulApi}`, { headers: { 'X-Consul-Token': consulAclToken } })
         .then(res => {
             if (!res.ok) throw Error(apiReachError)
         })
@@ -27,7 +31,10 @@ export async function getClusterConsensus(
         })
     
     const leaderDeclarationError = 'Leader not declared yet'
-    const leaderIP : string = await fetch(`${consulApi}/v1/status/leader?dc=${encodeURIComponent(consulDatacenter)}`)
+    const leaderIP : string = await fetch(
+        `${consulApi}/v1/status/leader?dc=${encodeURIComponent(consulDatacenter)}`,
+        { headers: { 'X-Consul-Token': consulAclToken } }
+    )
         .then(res => res.json())
         .then(res => {
             if (typeof(res) !== 'string') throw Error(leaderDeclarationError)
@@ -39,7 +46,10 @@ export async function getClusterConsensus(
         })
     
     const peerDeclarationError = 'Peers not declared yet'
-    const peerIPs = await fetch(`${consulApi}/v1/status/peers?dc=${encodeURIComponent(consulDatacenter)}`)
+    const peerIPs = await fetch(
+        `${consulApi}/v1/status/peers?dc=${encodeURIComponent(consulDatacenter)}`,
+        { headers: { 'X-Consul-Token': consulAclToken } }
+    )
         .then(res => res.json())
         .then(res => {
             if (typeof(res) !== 'object') throw Error(peerDeclarationError)
@@ -58,20 +68,18 @@ export async function getClusterConsensus(
 }
 
 export async function reachClusterConsensus(
-    consulScheme : string,
-    consulHost : string,
-    consulPort : string,
+    consulApi : string,
     consulDatacenter : string,
+    consulAclToken : string,
     consensusCheckTimeout : number
 ) : Promise<ConsulConsensusResult> {
     var clusterConsensusResult = null
     do {
         try {
             clusterConsensusResult = await getClusterConsensus(
-                consulScheme,
-                consulHost,
-                consulPort,
-                consulDatacenter
+                consulApi,
+                consulDatacenter,
+                consulAclToken
             )
         } catch (error) {
             console.log(
@@ -94,11 +102,13 @@ export async function findConsulNodes(
     consulHost : string,
     consulPort : string,
     consulDatacenter : string,
+    consulAclToken : string,
     clusterConsensus : ConsulConsensusResult
 ) : Promise<Array<EnhancedConsulNode>> {
     const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
     const nodes : Array<ConsulNode> = await fetch(
-        `${consulApi}/v1/catalog/nodes?dc=${encodeURIComponent(consulDatacenter)}`
+        `${consulApi}/v1/catalog/nodes?dc=${encodeURIComponent(consulDatacenter)}`,
+        { headers: { 'X-Consul-Token': consulAclToken } }
     ).then(res => res.json())
     const enhancedNodes : Array<EnhancedConsulNode> = []
     for (let node of nodes) {
@@ -123,3 +133,113 @@ export async function findConsulNodes(
     return enhancedNodes
 }
 
+export async function createAgentPolicy(
+    consulApi : string,
+    consulDatacenter : string,
+    consulAclToken : string
+) : Promise<AgentPolicyResponse> {
+    const agentPolicy = {
+        Name: 'agent',
+        Description:
+            'Grants read/write access to all node information & ' +
+            'read access to all service information',
+        Rules: `
+            node_prefix "" {
+                policy = "write"
+            }
+            service_prefix "" {
+                policy = "read"
+            }
+        `,
+        Datacenters: [ consulDatacenter ]
+    }
+ 
+    return await fetch(`${consulApi}/v1/acl/policy`, {
+        method: 'PUT',
+        body:    JSON.stringify(agentPolicy),
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Consul-Token': consulAclToken
+        },
+    })
+        .then(res => {
+            if (!res.ok) throw Error(
+                `API Response status: ${res.statusText}`
+            )
+            return res.json()
+        })
+        .catch(err => {
+            throw Error(
+                `Failed to create an agent policy. ` +
+                `Reason: ${err.message}`
+            )
+        });
+}
+
+export async function createAgentToken(
+    consulApi : string,
+    consulAclToken : string,
+    agentPolicy : AgentPolicyResponse
+) : Promise<AgentTokenResponse> {
+    const agentToken = {
+        Description:
+            'Token for cluster agents',
+        Policies: [ agentPolicy.ID ]
+    }
+ 
+    return await fetch(`${consulApi}/v1/acl/token`, {
+        method: 'PUT',
+        body:    JSON.stringify(agentToken),
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-Consul-Token': consulAclToken
+        },
+    })
+        .then(res => {
+            if (!res.ok) throw Error(
+                `API Response status: ${res.statusText}`
+            )
+            return res.json()
+        })
+        .then(json => json)
+        .catch(err => {
+            throw Error(
+                `Failed to create agent token ` +
+                `Reason: ${err.message}`
+            )
+        });
+}
+
+export async function assignAgentTokens(
+    consulAclToken : string,
+    consulNodes : Array<EnhancedConsulNode>,
+    agentToken : AgentTokenResponse
+) {
+    for (let node of consulNodes) {
+        let agentTokenAttachment = {
+            Token: agentToken.SecretID
+        }
+    
+        return await fetch(`${node.apiAddress}/v1/agent/token/agent`, {
+            method: 'PUT',
+            body:    JSON.stringify(agentTokenAttachment),
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Consul-Token': consulAclToken
+            },
+        })
+            .then(res => {
+                if (!res.ok) throw Error(
+                    `API Response status: ${res.statusText}`
+                )
+                return res.json()
+            })
+            .then(json => json)
+            .catch(err => {
+                throw Error(
+                    `Failed to assign agent token ` +
+                    `Reason: ${err.message}`
+                )
+            });    
+    }
+}
