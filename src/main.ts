@@ -2,8 +2,9 @@
 import {
     createConsulApiAddress,
     reachClusterConsensus,
-    // findConsulAgents
+    findConsulNodes
 } from './helpers'
+import { EnhancedConsulNode, ConsulConsensusResult } from 'types';
 
 async function main() {
     const consulScheme = process.env['CONSUL_SCHEME'] || 'http'
@@ -17,26 +18,27 @@ async function main() {
     
     console.log('Will try to bootstrap Consul agent ACL tokens.')
     console.log(`Will try to reach Consul datacenter '${consulDatacenter}' at address '${consulApi}'`)
-    const clusterConsensus = await reachClusterConsensus(
+    const clusterConsensus : ConsulConsensusResult = await reachClusterConsensus(
         consulScheme,
         consulHost,
         consulPort,
         consulDatacenter,
         consensusCheckTimeout
     )
+    
     // Make this timeout also
-    // const clusterAgents = await findConsulAgents(
-    //     consulScheme,
-    //     consulHost,
-    //     consulPort,
-    //     consulDatacenter,
-    //     clusterConsensus
-    // )
-    // console.log('Found the following cluster agents:')
-    // for (let node of nodes) {
-        // console.log(`Node `)
-        // Inform who's the leader
-    // }
+    const clusterNodes : Array<EnhancedConsulNode> = await findConsulNodes(
+        consulScheme,
+        consulHost,
+        consulPort,
+        consulDatacenter,
+        clusterConsensus
+    )
+
+    console.log('Found the following cluster nodes:')
+    for (let node of clusterNodes) {
+        console.log(`Node ${node.Node} has role ${node.type}. ID: ${node.ID}`)
+    }
 
     // Create one agent policy & token
     // Assign all agents the created token

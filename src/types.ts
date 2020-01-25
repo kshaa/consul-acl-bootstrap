@@ -3,18 +3,19 @@ export interface ConsulConsensusResult {
     peerIPs: Array<string>
 }
 
-
 export interface ConsulNode {
     ID: string
     Node: string
     Address: string
 }
 
-export enum MasterOrSlave {
+export enum ConsulNodeType {
     Master = 'master',
-    Slave = 'slave'
+    Slave = 'slave',
+    Unknown = 'unknown'
 }
 
-export interface TypedConsulNode extends ConsulNode {
-    type: MasterOrSlave
+export interface EnhancedConsulNode extends ConsulNode {
+    type: ConsulNodeType
+    apiAddress: string 
 }

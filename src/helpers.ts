@@ -1,5 +1,5 @@
 import fetch from 'node-fetch'
-import { ConsulConsensusResult, ConsulNode, TypedConsulNode } from './types'
+import { ConsulConsensusResult, ConsulNode, EnhancedConsulNode, ConsulNodeType } from './types'
 
 export function createConsulApiAddress(
     consulScheme : string,
@@ -28,11 +28,11 @@ export async function getClusterConsensus(
     
     const leaderDeclarationError = 'Leader not declared yet'
     const leaderIP : string = await fetch(`${consulApi}/v1/status/leader?dc=${encodeURIComponent(consulDatacenter)}`)
-        .then(res => res.text())
+        .then(res => res.json())
         .then(res => {
             if (typeof(res) !== 'string') throw Error(leaderDeclarationError)
             if (res == '' ) throw Error(leaderDeclarationError)
-            return res
+            return res.replace(/\:.*/g, '') // Remove port from node address
         })
         .catch(err => {
             throw Error(leaderDeclarationError)
@@ -44,7 +44,8 @@ export async function getClusterConsensus(
         .then(res => {
             if (typeof(res) !== 'object') throw Error(peerDeclarationError)
             if (res.length == 0) throw Error(peerDeclarationError)
-            return res
+
+            return res.map(address => address.replace(/\:.*/g, '')) // Remove port from node address
         })
         .catch(err => {
             throw Error('Peers not declared yet')
@@ -63,8 +64,7 @@ export async function reachClusterConsensus(
     consulDatacenter : string,
     consensusCheckTimeout : number
 ) : Promise<ConsulConsensusResult> {
-    var consensusReached = false
-    var clusterConsensusResult
+    var clusterConsensusResult = null
     do {
         try {
             clusterConsensusResult = await getClusterConsensus(
@@ -72,9 +72,7 @@ export async function reachClusterConsensus(
                 consulHost,
                 consulPort,
                 consulDatacenter
-            ).then(res => {
-                consensusReached = true
-            })
+            )
         } catch (error) {
             console.log(
                 `Consul cluster hasn't reached a consensus yet. ` +
@@ -86,23 +84,42 @@ export async function reachClusterConsensus(
                 setTimeout(resolve, consensusCheckTimeout)
             }) 
         }
-    } while(!consensusReached)
+    } while (clusterConsensusResult === null)
+
     return clusterConsensusResult
 }
 
-// export async function findConsulAgents(
-//     consulScheme : string,
-//     consulHost : string,
-//     consulPort : string,
-//     consulDatacenter : string,
-//     clusterConsensus : ConsulConsensusResult
-// ) : Array<TypedConsulNode> {
-//     const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
-//     const nodes : Array<ConsulNode> = await fetch(`${consulApi}/v1/catalog/nodes`)
-//         .then(res => res.json())
+export async function findConsulNodes(
+    consulScheme : string,
+    consulHost : string,
+    consulPort : string,
+    consulDatacenter : string,
+    clusterConsensus : ConsulConsensusResult
+) : Promise<Array<EnhancedConsulNode>> {
+    const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
+    const nodes : Array<ConsulNode> = await fetch(
+        `${consulApi}/v1/catalog/nodes?dc=${encodeURIComponent(consulDatacenter)}`
+    ).then(res => res.json())
+    const enhancedNodes : Array<EnhancedConsulNode> = []
+    for (let node of nodes) {
+        var type : ConsulNodeType = ConsulNodeType.Unknown 
+        if (node.Address === clusterConsensus.leaderIP) {
+            type = ConsulNodeType.Master
+        } else if (clusterConsensus.peerIPs.includes(node.Address)) {
+            type = ConsulNodeType.Slave
+        }
+        let apiAddress = createConsulApiAddress(
+            consulScheme,
+            node.Address,
+            consulPort
+        )
+        enhancedNodes.push({
+            ...node,
+            type,
+            apiAddress
+        } as EnhancedConsulNode)
+    }
 
-//     // Implement exception handling
-//     // Create typed consul node array
-//     return []
-// }
+    return enhancedNodes
+}
 
