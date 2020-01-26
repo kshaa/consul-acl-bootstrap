@@ -74,6 +74,8 @@ export async function reachClusterConsensus(
     consensusCheckTimeout : number
 ) : Promise<ConsulConsensusResult> {
     var clusterConsensusResult = null
+    var oldErrorMessage = null
+    var newErrorMessage = null
     do {
         try {
             clusterConsensusResult = await getClusterConsensus(
@@ -82,11 +84,15 @@ export async function reachClusterConsensus(
                 consulAclToken
             )
         } catch (error) {
-            console.log(
-                `Consul cluster hasn't reached a consensus yet. ` +
-                `Reason: '${error.message}'. ` +
-                `Waiting for ${consensusCheckTimeout} miliseconds until next check.`
-            )
+            newErrorMessage = error.message
+            if (newErrorMessage != oldErrorMessage) {
+                console.log(
+                    `Consul cluster hasn't reached a consensus yet. ` +
+                    `Reason: '${error.message}'. ` +
+                    `Will silently check every ${consensusCheckTimeout} miliseconds until there's a change.`
+                )
+            }
+            oldErrorMessage = newErrorMessage
 
             await new Promise((resolve) => {
                 setTimeout(resolve, consensusCheckTimeout)
