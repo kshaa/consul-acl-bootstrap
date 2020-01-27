@@ -1,4 +1,5 @@
 import fetch from 'node-fetch'
+import { createConsulApiAddress } from './helpers'
 import {
     ConsulConsensusResult,
     ConsulNode,
@@ -7,14 +8,6 @@ import {
     AgentPolicyResponse,
     AgentTokenResponse
 } from './types'
-
-export function createConsulApiAddress(
-    consulScheme : string,
-    consulHost : string,
-    consulPort : string
-) : string {
-    return `${consulScheme}://${consulHost}:${consulPort}`
-}
 
 export async function getClusterConsensus(
     consulApi : string,
@@ -67,43 +60,7 @@ export async function getClusterConsensus(
     } as ConsulConsensusResult
 }
 
-export async function reachClusterConsensus(
-    consulApi : string,
-    consulDatacenter : string,
-    consulAclToken : string,
-    consensusCheckTimeout : number
-) : Promise<ConsulConsensusResult> {
-    var clusterConsensusResult = null
-    var oldErrorMessage = null
-    var newErrorMessage = null
-    do {
-        try {
-            clusterConsensusResult = await getClusterConsensus(
-                consulApi,
-                consulDatacenter,
-                consulAclToken
-            )
-        } catch (error) {
-            newErrorMessage = error.message
-            if (newErrorMessage != oldErrorMessage) {
-                console.log(
-                    `Consul cluster hasn't reached a consensus yet. ` +
-                    `Reason: '${error.message}'. ` +
-                    `Will silently check every ${consensusCheckTimeout} miliseconds until there's a change.`
-                )
-            }
-            oldErrorMessage = newErrorMessage
-
-            await new Promise((resolve) => {
-                setTimeout(resolve, consensusCheckTimeout)
-            }) 
-        }
-    } while (clusterConsensusResult === null)
-
-    return clusterConsensusResult
-}
-
-export async function findConsulNodes(
+export async function getConsulNodes(
     consulScheme : string,
     consulHost : string,
     consulPort : string,
