@@ -64,11 +64,12 @@ export async function repeatUntilCreateAgentPolicy(
 export async function repeatUntilCreateAgentToken(
     consulApi : string,
     consulAclToken : string,
+    tokenSecretId : string,
     agentPolicy : AgentPolicyResponse,
     repeatTimeout : number,
 ) : Promise<AgentTokenResponse> {
     return await repeatUntilSuccess("Create consul agent token", repeatTimeout, async () => {
-        return await createAgentToken(consulApi, consulAclToken, agentPolicy)
+        return await createAgentToken(consulApi, consulAclToken, tokenSecretId, agentPolicy)
     })
 }    
 

@@ -6,7 +6,8 @@ import {
     EnhancedConsulNode,
     ConsulNodeType,
     AgentPolicyResponse,
-    AgentTokenResponse
+    AgentTokenResponse,
+    AgentToken
 } from './types'
 
 export async function getClusterConsensus(
@@ -142,12 +143,17 @@ export async function createAgentPolicy(
 export async function createAgentToken(
     consulApi : string,
     consulAclToken : string,
+    tokenSecretId : string,
     agentPolicy : AgentPolicyResponse
 ) : Promise<AgentTokenResponse> {
-    const agentToken = {
+    var agentToken : AgentToken = {
         Description:
             'Token for cluster agents',
         Policies: [ agentPolicy.ID ]
+    }
+    
+    if (tokenSecretId !== null) {
+        agentToken.SecretID = tokenSecretId
     }
  
     return await fetch(`${consulApi}/v1/acl/token`, {

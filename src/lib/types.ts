@@ -23,7 +23,13 @@ export interface EnhancedConsulNode extends ConsulNode {
 export interface AgentPolicyResponse {
     ID : string
     Name : string
-    Description : string,
+    Description : string
+}
+
+export interface AgentToken {
+    Description : string
+    Policies : Array<string>
+    SecretID? : string
 }
 
 export interface AgentTokenResponse {

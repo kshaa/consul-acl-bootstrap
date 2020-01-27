@@ -18,6 +18,7 @@ async function main() {
     const pollingTimeout = Number(process.env['POLLING_TIMEOUT_MS']) || 5000
     const consulDatacenter = process.env['CONSUL_DATACENTER'] || 'dc1'
     const consulAclToken = process.env['CONSUL_ACL_TOKEN'] || '' // Most likely management token
+    const tokenSecretId = process.env['CONSUL_AGENT_SECRET_ID']
     const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
 
     if (!consulHost) throw Error('Consul host not configured, use CONSUL_HOST')
@@ -62,17 +63,23 @@ async function main() {
     const agentToken = await repeatUntilCreateAgentToken(
         consulApi,
         consulAclToken,
+        tokenSecretId,
         agentPolicy,
         pollingTimeout
     )
 
-    // Assign all agents the created token
-    await repeatUntilAssignAgentTokens(
-        consulAclToken,
-        consulNodes,
-        agentToken,
-        pollingTimeout
-    )
+    // If tokenSecretId is provided, then I'm supposing that you've already
+    // assigned the secret id in consul node configuration and assigning it
+    // through API isn't necessary
+    if (tokenSecretId === null) {
+        // Assign all agents the created token
+        await repeatUntilAssignAgentTokens(
+            consulAclToken,
+            consulNodes,
+            agentToken,
+            pollingTimeout
+        )
+    }
 
     // Report on success
     console.log('Finished agent ACL token bootstrap')
