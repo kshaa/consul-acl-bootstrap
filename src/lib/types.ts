@@ -34,6 +34,7 @@ export interface AgentToken {
     Description : string
     Policies : Array<AgentPolicyMap>
     SecretID? : string
+    AccessorID? : string
 }
 
 export interface AgentTokenResponse {

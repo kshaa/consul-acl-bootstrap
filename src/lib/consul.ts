@@ -209,7 +209,11 @@ export async function createAgentToken(
             { ID: agentPolicy.ID }
         ]
     }
-    
+
+    if (tokenAccessorId !== null) {
+        agentToken.AccessorID = tokenAccessorId
+    }
+
     if (tokenSecretId !== null) {
         agentToken.SecretID = tokenSecretId
     }
