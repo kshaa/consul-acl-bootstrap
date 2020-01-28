@@ -1,4 +1,4 @@
-import { repeatUntilSuccess, repeatUntil } from './helpers'
+import { repeatUntilSuccess } from './helpers'
 import {
     getClusterConsensus,
     getConsulNodes,
@@ -10,8 +10,7 @@ import {
     ConsulConsensusResult,
     EnhancedConsulNode,
     AgentPolicyResponse,
-    AgentTokenResponse,
-    AlreadyExistsError
+    AgentTokenResponse
 } from './types'
 
 export async function repeatUntilGetClusterConsensus(
@@ -55,23 +54,27 @@ export async function repeatUntilCreateAgentPolicy(
     consulApi : string,
     consulDatacenter : string,
     consulAclToken : string,
-    repeatTimeout : number,
+    policyPath : string,
+    policyName : string,
+    aclDescription : string,
+    repeatTimeout : number
 ) : Promise<AgentPolicyResponse> {
     return await repeatUntilSuccess("Create consul agent policy", repeatTimeout, async () => {
-        return await createAgentPolicy(consulApi, consulDatacenter, consulAclToken)
+        return await createAgentPolicy(consulApi, consulDatacenter, consulAclToken, policyPath, policyName, aclDescription)
     })
 }
 
 export async function repeatUntilCreateAgentToken(
     consulApi : string,
     consulAclToken : string,
-    tokenAccessorId : string | null,
-    tokenSecretId : string | null,
-    agentPolicy : AgentPolicyResponse,
+    tokenAccessorId : string,
+    tokenSecretId : string,
+    policyName: string,
+    aclDescription : string,
     repeatTimeout : number,
 ) : Promise<AgentTokenResponse> {
     return await repeatUntilSuccess("Create consul agent token", repeatTimeout, async () => {
-        return await createAgentToken(consulApi, consulAclToken, tokenAccessorId, tokenSecretId, agentPolicy)
+        return await createAgentToken(consulApi, consulAclToken, tokenAccessorId, tokenSecretId, policyName, aclDescription)
     })
 }    
 

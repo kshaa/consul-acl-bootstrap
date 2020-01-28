@@ -1,4 +1,6 @@
 import fetch from 'node-fetch'
+import { promises } from 'fs'
+const asyncfs = promises
 import { createConsulApiAddress } from './helpers'
 import {
     ConsulConsensusResult,
@@ -7,8 +9,7 @@ import {
     ConsulNodeType,
     AgentPolicyResponse,
     AgentTokenResponse,
-    AgentToken,
-    AlreadyExistsError
+    AgentToken
 } from './types'
 
 export async function getClusterConsensus(
@@ -101,7 +102,10 @@ export async function getConsulNodes(
 export async function createAgentPolicy(
     consulApi : string,
     consulDatacenter : string,
-    consulAclToken : string
+    consulAclToken : string,
+    policyPath : string,
+    policyName : string,
+    aclDescription : string
 ) : Promise<AgentPolicyResponse> {
     // Check if policy exists
     const agentPolicies = await fetch(`${consulApi}/v1/acl/policies`, {
@@ -123,25 +127,19 @@ export async function createAgentPolicy(
 
     // If already exists return
     for (let policy of agentPolicies) {
-        if (policy["Name"] === "agent") {
+        if (policy["Name"] === policyName) {
             return policy
         }
     }
 
+    // Fetch policy from filesystem
+    const policyRules = await asyncfs.readFile(policyPath, "utf8");
+
     // Create policy
     const agentPolicy = {
-        Name: 'agent',
-        Description:
-            'Grants read/write access to all node information & ' +
-            'read access to all service information',
-        Rules: `
-            node_prefix "" {
-                policy = "write"
-            }
-            service_prefix "" {
-                policy = "read"
-            }
-        `,
+        Name: policyName,
+        Description: aclDescription,
+        Rules: policyRules,
         Datacenters: [ consulDatacenter ]
     }
  
@@ -170,43 +168,41 @@ export async function createAgentPolicy(
 export async function createAgentToken(
     consulApi : string,
     consulAclToken : string,
-    tokenAccessorId : string | null,
-    tokenSecretId : string | null,
-    agentPolicy : AgentPolicyResponse
+    tokenAccessorId : string,
+    tokenSecretId : string,
+    policyName : string,
+    aclDescription : string
 ) : Promise<AgentTokenResponse> {
-    if (tokenAccessorId !== null) {
-        // Check if token exists
-        const allTokens = await fetch(`${consulApi}/v1/acl/tokens`, {
-            method: 'GET',
-            headers: { 'X-Consul-Token': consulAclToken }
+    // Check if token exists
+    const allTokens = await fetch(`${consulApi}/v1/acl/tokens`, {
+        method: 'GET',
+        headers: { 'X-Consul-Token': consulAclToken }
+    })
+        .then(res => {
+            if (!res.ok) throw Error(
+                `API Response status: ${res.statusText}`
+            )
+            return res.json()
         })
-            .then(res => {
-                if (!res.ok) throw Error(
-                    `API Response status: ${res.statusText}`
-                )
-                return res.json()
-            })
-            .catch(err => {
-                throw Error(
-                    `Failed to check agent token state. ` +
-                    `Reason: ${err.message}`
-                )
-            })
+        .catch(err => {
+            throw Error(
+                `Failed to check agent token state. ` +
+                `Reason: ${err.message}`
+            )
+        })
 
-        // If already exists return
-        for (let token of allTokens) {
-            if (token["AccessorID"] === tokenAccessorId) {
-                return token
-            }
+    // If already exists return
+    for (let token of allTokens) {
+        if (token["AccessorID"] === tokenAccessorId) {
+            return token
         }
     }
     
     // Create token
     var agentToken : AgentToken = {
-        Description:
-            'Token for cluster agents',
+        Description: aclDescription,
         Policies: [
-            { ID: agentPolicy.ID }
+            { Name: policyName }
         ]
     }
 

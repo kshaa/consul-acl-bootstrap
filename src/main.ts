@@ -4,12 +4,9 @@ import {
 } from './lib/helpers'
 import {
     repeatUntilGetClusterConsensus,
-    repeatUntilGetConsulNodes,
     repeatUntilCreateAgentPolicy,
     repeatUntilCreateAgentToken,
-    repeatUntilAssignAgentTokens
 } from './lib/consulRepeat'
-import { EnhancedConsulNode, ConsulConsensusResult } from 'lib/types';
 
 async function main() {
     const consulScheme = process.env['CONSUL_SCHEME'] || 'http'
@@ -17,71 +14,59 @@ async function main() {
     const consulPort = process.env['CONSUL_PORT'] || '8500'
     const pollingTimeout = Number(process.env['POLLING_TIMEOUT_MS']) || 5000
     const consulDatacenter = process.env['CONSUL_DATACENTER'] || 'dc1'
-    const consulAclToken = process.env['CONSUL_ACL_TOKEN'] || '' // Most likely management token
-    const tokenAccessorId =  process.env['CONSUL_AGENT_ACCESSOR_ID']
-    const tokenSecretId = process.env['CONSUL_AGENT_SECRET_ID']
+    const consulMgmtToken = process.env['CONSUL_MANAGEMENT_TOKEN_SECRET_ID'] || ''
+    const tokenAccessorId = process.env['CONSUL_TOKEN_ACCESSOR_ID']
+    const tokenSecretId = process.env['CONSUL_TOKEN_SECRET_ID']
+    const aclDescription = process.env['CONSUL_ACL_DESCRIPTION'] || 'ACL without description, bootstrapped using kshaa/consul-acl-bootstrap'
+    const policyPath = process.env['CONSUL_POLICY_PATH']
+    const policyName = process.env['CONSUL_POLICY_NAME']
     const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
 
+    if (!consulMgmtToken) throw Error('Consul management token secret not configured, use CONSUL_MANAGEMENT_TOKEN_SECRET_ID')
     if (!consulHost) throw Error('Consul host not configured, use CONSUL_HOST')
+    if (!policyPath) throw Error('Consul policy path not configured, use CONSUL_POLICY_PATH')
+    if (!policyName) throw Error('Consul policy name not configured, use CONSUL_POLICY_NAME')
+    if (!tokenAccessorId) throw Error('Consul token accessor id not configured, use CONSUL_TOKEN_ACCESSOR_ID')
+    if (!tokenSecretId) throw Error('Consul token secret id not configured, use CONSUL_TOKEN_SECRET_ID')
     
-    console.log('Will try to bootstrap Consul agent ACL tokens.')
-    console.log(`Will try to reach Consul datacenter '${consulDatacenter}' at address '${consulApi}'`)
+    console.log('Bootstrapping custom Consul ACL policy & token.')
+    console.log(`Attempting to reach Consul datacenter '${consulDatacenter}' at address '${consulApi}'`)
     
-    // Wait until cluster reached consensus
-    const clusterConsensus : ConsulConsensusResult = await repeatUntilGetClusterConsensus(
+    // Wait until cluster reached consensus (I.e. Consul is ready for requests)
+    await repeatUntilGetClusterConsensus(
         consulApi,
         consulDatacenter,
-        consulAclToken,
+        consulMgmtToken,
         pollingTimeout
     )
-
-    // Get nodes with master/slave info
-    const consulNodes : Array<EnhancedConsulNode> = await repeatUntilGetConsulNodes(
-        consulScheme,
-        consulHost,
-        consulPort,
-        consulDatacenter,
-        consulAclToken,
-        clusterConsensus,
-        pollingTimeout
-    )
-
-    // Log node info
-    console.log('Found the following cluster nodes:')
-    for (let node of consulNodes) {
-        console.log(`Node ${node.Node} has role ${node.type}. ID: ${node.ID}`)
-    }
 
     // Create agent policy
-    const agentPolicy = await repeatUntilCreateAgentPolicy(
+    await repeatUntilCreateAgentPolicy(
+        // Access
         consulApi,
         consulDatacenter,
-        consulAclToken,
+        consulMgmtToken,
+        // Content
+        policyPath,
+        policyName,
+        aclDescription,
+        // Retries
         pollingTimeout
     )
 
     // Create agent token
-    const agentToken = await repeatUntilCreateAgentToken(
+    await repeatUntilCreateAgentToken(
+        // Access
         consulApi,
-        consulAclToken,
+        consulMgmtToken,
+        // Content
         tokenAccessorId,
         tokenSecretId,
-        agentPolicy,
+        policyName,
+        aclDescription,
+        // Retries
         pollingTimeout
     )
-
-    // If tokenSecretId is provided, then I'm supposing that you've already
-    // assigned the secret id in consul node configuration and assigning it
-    // through API isn't necessary
-    if (tokenSecretId === null) {
-        // Assign all agents the created token
-        await repeatUntilAssignAgentTokens(
-            consulAclToken,
-            consulNodes,
-            agentToken,
-            pollingTimeout
-        )
-    }
 
     // Report on success
     console.log('Finished agent ACL token bootstrap')
