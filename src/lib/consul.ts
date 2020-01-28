@@ -7,7 +7,8 @@ import {
     ConsulNodeType,
     AgentPolicyResponse,
     AgentTokenResponse,
-    AgentToken
+    AgentToken,
+    AlreadyExistsError
 } from './types'
 
 export async function getClusterConsensus(
@@ -102,6 +103,32 @@ export async function createAgentPolicy(
     consulDatacenter : string,
     consulAclToken : string
 ) : Promise<AgentPolicyResponse> {
+    // Check if policy exists
+    const agentPolicies = await fetch(`${consulApi}/v1/acl/policies`, {
+        method: 'GET',
+        headers: { 'X-Consul-Token': consulAclToken }
+    })
+        .then(res => {
+            if (!res.ok) throw Error(
+                `API Response status: ${res.statusText}`
+            )
+            return res.json()
+        })
+        .catch(err => {
+            throw Error(
+                `Failed to check agent policy state. ` +
+                `Reason: ${err.message}`
+            )
+        })
+
+    // If already exists return
+    for (let policy of agentPolicies) {
+        if (policy["Name"] === "agent") {
+            return policy
+        }
+    }
+
+    // Create policy
     const agentPolicy = {
         Name: 'agent',
         Description:
@@ -143,13 +170,44 @@ export async function createAgentPolicy(
 export async function createAgentToken(
     consulApi : string,
     consulAclToken : string,
-    tokenSecretId : string,
+    tokenAccessorId : string | null,
+    tokenSecretId : string | null,
     agentPolicy : AgentPolicyResponse
 ) : Promise<AgentTokenResponse> {
+    if (tokenAccessorId !== null) {
+        // Check if token exists
+        const allTokens = await fetch(`${consulApi}/v1/acl/tokens`, {
+            method: 'GET',
+            headers: { 'X-Consul-Token': consulAclToken }
+        })
+            .then(res => {
+                if (!res.ok) throw Error(
+                    `API Response status: ${res.statusText}`
+                )
+                return res.json()
+            })
+            .catch(err => {
+                throw Error(
+                    `Failed to check agent token state. ` +
+                    `Reason: ${err.message}`
+                )
+            })
+
+        // If already exists return
+        for (let token of allTokens) {
+            if (token["AccessorID"] === tokenAccessorId) {
+                return token
+            }
+        }
+    }
+    
+    // Create token
     var agentToken : AgentToken = {
         Description:
             'Token for cluster agents',
-        Policies: [ agentPolicy.ID ]
+        Policies: [
+            { ID: agentPolicy.ID }
+        ]
     }
     
     if (tokenSecretId !== null) {

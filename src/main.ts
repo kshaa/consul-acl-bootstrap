@@ -18,6 +18,7 @@ async function main() {
     const pollingTimeout = Number(process.env['POLLING_TIMEOUT_MS']) || 5000
     const consulDatacenter = process.env['CONSUL_DATACENTER'] || 'dc1'
     const consulAclToken = process.env['CONSUL_ACL_TOKEN'] || '' // Most likely management token
+    const tokenAccessorId =  process.env['CONSUL_AGENT_ACCESSOR_ID']
     const tokenSecretId = process.env['CONSUL_AGENT_SECRET_ID']
     const consulApi = createConsulApiAddress(consulScheme, consulHost, consulPort)
 
@@ -63,6 +64,7 @@ async function main() {
     const agentToken = await repeatUntilCreateAgentToken(
         consulApi,
         consulAclToken,
+        tokenAccessorId,
         tokenSecretId,
         agentPolicy,
         pollingTimeout

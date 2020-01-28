@@ -26,9 +26,13 @@ export interface AgentPolicyResponse {
     Description : string
 }
 
+export interface AgentPolicyMap {
+    ID? : string
+    Name? : string
+}
 export interface AgentToken {
     Description : string
-    Policies : Array<string>
+    Policies : Array<AgentPolicyMap>
     SecretID? : string
 }
 
@@ -37,3 +41,5 @@ export interface AgentTokenResponse {
     SecretID : string
     Description : string
 }
+
+export class AlreadyExistsError extends Error {}
